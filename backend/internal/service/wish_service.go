@@ -16,7 +16,7 @@ type WishService interface {
 	Create(userID uint64, req dto.CreateWishRequest, ip, requestID string) (*model.Wish, error)
 	Update(userID, wishID uint64, req dto.UpdateWishRequest, ip, requestID string) (*model.Wish, error)
 	Delete(userID, wishID uint64, ip, requestID string) error
-	GetByID(wishID uint64) (*dto.WishDetailResponse, error)
+	GetByID(wishID, viewerID uint64) (*dto.WishDetailResponse, error)
 	List(q dto.WishQuery) (*dto.PageResult, error)
 	ListMine(userID uint64, q dto.PageQuery) (*dto.PageResult, error)
 	Like(userID, wishID uint64, ip, requestID string) error
@@ -25,26 +25,28 @@ type WishService interface {
 }
 
 type wishService struct {
-	wish    repository.WishRepository
-	claim   repository.WishClaimRepository
-	bless   repository.BlessingRepository
-	user    repository.UserRepository
-	badge   BadgeService
-	audit   AuditService
-	logger  *slog.Logger
+	wish      repository.WishRepository
+	claim     repository.WishClaimRepository
+	extension repository.DeadlineExtensionRepository
+	bless     repository.BlessingRepository
+	user      repository.UserRepository
+	badge     BadgeService
+	audit     AuditService
+	logger    *slog.Logger
 }
 
 // NewWishService 构造心愿服务。
 func NewWishService(
 	wish repository.WishRepository,
 	claim repository.WishClaimRepository,
+	extension repository.DeadlineExtensionRepository,
 	bless repository.BlessingRepository,
 	user repository.UserRepository,
 	badge BadgeService,
 	audit AuditService,
 	logger *slog.Logger,
 ) WishService {
-	return &wishService{wish: wish, claim: claim, bless: bless, user: user, badge: badge, audit: audit, logger: logger}
+	return &wishService{wish: wish, claim: claim, extension: extension, bless: bless, user: user, badge: badge, audit: audit, logger: logger}
 }
 
 func (s *wishService) Create(userID uint64, req dto.CreateWishRequest, ip, requestID string) (*model.Wish, error) {
@@ -142,7 +144,7 @@ func (s *wishService) Delete(userID, wishID uint64, ip, requestID string) error 
 	return nil
 }
 
-func (s *wishService) GetByID(wishID uint64) (*dto.WishDetailResponse, error) {
+func (s *wishService) GetByID(wishID, viewerID uint64) (*dto.WishDetailResponse, error) {
 	wish, err := s.wish.FindByID(wishID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -155,12 +157,30 @@ func (s *wishService) GetByID(wishID uint64) (*dto.WishDetailResponse, error) {
 		detail.AuthorNickname = author.Nickname
 		detail.AuthorAvatar = author.Avatar
 	}
-	if claim, cerr := s.claim.FindByWishID(wishID); cerr == nil {
+	var claim *model.WishClaim
+	if c, cerr := s.claim.FindByWishID(wishID); cerr == nil {
+		claim = c
 		claimResp := dto.ToWishClaimResponse(claim, wish.Title, "")
 		if fulfiller, ferr := s.user.FindByID(claim.UserID); ferr == nil {
 			claimResp.FulfillerName = fulfiller.Nickname
 		}
 		detail.Claim = &claimResp
+	}
+	// 延期协商：发布者与圆梦人看到完整申请；其他人只看到状态概览（只能查看，无操作入口）。
+	if ext, eerr := s.extension.FindByWishID(wishID); eerr == nil {
+		isParty := viewerID > 0 && (viewerID == wish.UserID || (claim != nil && viewerID == claim.UserID))
+		if isParty {
+			extResp := dto.ToExtensionResponse(ext, "")
+			if fulfiller, ferr := s.user.FindByID(ext.UserID); ferr == nil {
+				extResp.FulfillerName = fulfiller.Nickname
+			}
+			detail.Extension = &extResp
+		} else {
+			detail.ExtensionBrief = map[string]string{
+				"status": ext.Status,
+				"text":   constants.ExtensionStatusText(ext.Status),
+			}
+		}
 	}
 	if count, berr := s.bless.CountByWishID(wishID); berr == nil {
 		detail.BlessingCount = count

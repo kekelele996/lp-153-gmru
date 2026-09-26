@@ -35,6 +35,21 @@ func Auth(jwtSecret string) gin.HandlerFunc {
 	}
 }
 
+// OptionalAuth 可选认证：携带合法 JWT 时写入用户身份，缺失或非法时不拦截（公开详情页按身份展示用）。
+func OptionalAuth(jwtSecret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		header := c.GetHeader("Authorization")
+		if strings.HasPrefix(header, "Bearer ") {
+			if claims, err := util.ParseToken(jwtSecret, strings.TrimPrefix(header, "Bearer ")); err == nil {
+				c.Set("user_id", claims.UserID)
+				c.Set("username", claims.Username)
+				c.Set("role", claims.Role)
+			}
+		}
+		c.Next()
+	}
+}
+
 func abortAuth(c *gin.Context, code int, message string) {
 	c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"code": code, "message": message})
 }

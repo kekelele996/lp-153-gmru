@@ -37,7 +37,7 @@ func TestWishClaimService_Claim(t *testing.T) {
 			wishFn: func(tx *gorm.DB, id uint64) (*model.Wish, error) {
 				return &model.Wish{ID: id, UserID: 1, Status: constants.WishStatusClaimed}, nil
 			},
-			createFn: func(tx *gorm.DB, claim *model.WishClaim) error { return nil },
+			createFn:    func(tx *gorm.DB, claim *model.WishClaim) error { return nil },
 			wantErrCode: constants.CodeWishAlreadyClaimed,
 		},
 		{
@@ -45,7 +45,7 @@ func TestWishClaimService_Claim(t *testing.T) {
 			wishFn: func(tx *gorm.DB, id uint64) (*model.Wish, error) {
 				return &model.Wish{ID: id, UserID: 2, Status: constants.WishStatusPending}, nil
 			},
-			createFn: func(tx *gorm.DB, claim *model.WishClaim) error { return nil },
+			createFn:    func(tx *gorm.DB, claim *model.WishClaim) error { return nil },
 			wantErrCode: constants.CodeWishStatusInvalid,
 		},
 	}
@@ -87,10 +87,10 @@ func TestWishClaimService_Claim(t *testing.T) {
 func TestWishClaimService_UpdateProgress_Complete(t *testing.T) {
 	t.Parallel()
 	wishRepo := &mockWishRepo{
-		findByIDFn: func(id uint64) (*model.Wish, error) {
+		findByIDForUpdateFn: func(tx *gorm.DB, id uint64) (*model.Wish, error) {
 			return &model.Wish{ID: id, UserID: 1, Status: constants.WishStatusClaimed}, nil
 		},
-		updateWithTxFn: func(tx *gorm.DB, wish *model.Wish) error { return nil },
+		updateWithTxFn:   func(tx *gorm.DB, wish *model.Wish) error { return nil },
 		countCompletedFn: func(userID uint64) (int64, error) { return 11, nil },
 	}
 	claimRepo := &mockClaimRepo{
@@ -111,5 +111,52 @@ func TestWishClaimService_UpdateProgress_Complete(t *testing.T) {
 	}
 	if claim.MilestoneCount != 1 {
 		t.Fatalf("expected milestone count 1, got %d", claim.MilestoneCount)
+	}
+}
+
+// 延期待处理期间禁止标记完成：完成必须等发布者审核结束。
+func TestWishClaimService_CompleteBlockedWhileExtensionPending(t *testing.T) {
+	t.Parallel()
+	wishRepo := &mockWishRepo{
+		findByIDForUpdateFn: func(tx *gorm.DB, id uint64) (*model.Wish, error) {
+			return &model.Wish{ID: id, UserID: 1, Status: constants.WishStatusExtensionPending}, nil
+		},
+	}
+	claimRepo := &mockClaimRepo{
+		findByIDFn: func(id uint64) (*model.WishClaim, error) {
+			return &model.WishClaim{ID: id, WishID: 5, UserID: 2, Progress: 80, Status: constants.WishStatusInProgress}, nil
+		},
+	}
+	svc := NewWishClaimService(&mockTx{}, wishRepo, claimRepo, &mockUserRepo{}, &mockBadge{}, &mockAudit{}, testLogger())
+	_, err := svc.Complete(context.Background(), 2, 9, dto.CompleteClaimRequest{Note: "完成了"}, "127.0.0.1", "req-7")
+	var appErr *util.AppError
+	if !errors.As(err, &appErr) || appErr.Code != constants.CodeExtensionPending {
+		t.Fatalf("expected CodeExtensionPending, got %v", err)
+	}
+}
+
+// 延期待处理期间普通进度更新保留 extension_pending 状态，不把延期协商冲掉。
+func TestWishClaimService_ProgressKeepsExtensionPending(t *testing.T) {
+	t.Parallel()
+	wishRepo := &mockWishRepo{
+		findByIDForUpdateFn: func(tx *gorm.DB, id uint64) (*model.Wish, error) {
+			return &model.Wish{ID: id, UserID: 1, Status: constants.WishStatusExtensionPending}, nil
+		},
+	}
+	var savedWishStatus string
+	claimRepo := &mockClaimRepo{
+		findByIDFn: func(id uint64) (*model.WishClaim, error) {
+			return &model.WishClaim{ID: id, WishID: 5, UserID: 2, Progress: 80, Status: constants.WishStatusInProgress}, nil
+		},
+		updateWithTxFn: func(tx *gorm.DB, claim *model.WishClaim) error { return nil },
+	}
+	wishRepo.updateWithTxFn = func(tx *gorm.DB, wish *model.Wish) error { savedWishStatus = wish.Status; return nil }
+	svc := NewWishClaimService(&mockTx{}, wishRepo, claimRepo, &mockUserRepo{}, &mockBadge{}, &mockAudit{}, testLogger())
+	_, err := svc.UpdateProgress(context.Background(), 2, 9, dto.UpdateProgressRequest{Progress: 60, Note: "继续推进"}, "127.0.0.1", "req-8")
+	if err != nil {
+		t.Fatalf("update progress: %v", err)
+	}
+	if savedWishStatus != constants.WishStatusExtensionPending {
+		t.Fatalf("wish status = %s, want extension_pending kept", savedWishStatus)
 	}
 }

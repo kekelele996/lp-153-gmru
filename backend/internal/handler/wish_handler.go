@@ -50,14 +50,15 @@ func (h *WishHandler) List(c *gin.Context) {
 	c.JSON(200, gin.H{"code": 0, "message": "ok", "data": result})
 }
 
-// GetByID GET /api/v1/wishes/:id
+// GetByID GET /api/v1/wishes/:id（公开接口；带 JWT 时按双方身份展示延期协商与操作入口）
 func (h *WishHandler) GetByID(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		responseError(c, 400, constants.CodeBadRequest, "心愿 id 参数非法")
 		return
 	}
-	detail, err := h.wish.GetByID(id)
+	viewerID := middleware.CurrentUserID(c)
+	detail, err := h.wish.GetByID(id, viewerID)
 	if err != nil {
 		handleError(c, err)
 		return

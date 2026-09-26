@@ -29,7 +29,7 @@ docker compose down -v --remove-orphans
 ## 项目主要功能
 
 1. **心愿发布**：文字 + 图片，分类（学习成长/旅行探险/情感陪伴/职业发展/生活小确幸/其他），可见范围（公开/好友可见/匿名），期望完成时间 + 难度标签。
-2. **心愿认领与进度追踪**：心愿广场浏览并认领心愿成为「圆梦人」，更新进度（百分比 + 文字），支持里程碑打卡。
+2. **心愿认领与进度追踪**：心愿广场浏览并认领心愿成为「圆梦人」，更新进度（百分比 + 文字），支持里程碑打卡。**截止日延期协商**：快到截止日时圆梦人可提交新截止日与原因，心愿转入「延期待处理」（同一申请只保留一份，期间不能标记完成）；发布者同意后更新截止日、进度与里程碑继续保留，拒绝则原日期不变。
 3. **祝福留言板**：每个心愿专属留言板，送祝福与虚拟礼物（🎁 表情包）；心愿完成自动转为庆祝页。
 4. **时光胶囊**：定时解锁的文字 + 图片 + 音频胶囊；解锁前内容打码，到期自动解锁并播放解锁动画。
 5. **心愿成就徽章**：首次许愿、首次认领、首次祝福、十次圆梦、圆梦大师；展示在个人主页。
@@ -58,7 +58,7 @@ lp-153/
 │   ├── internal/
 │   │   ├── config/                 # 环境变量配置
 │   │   ├── database/               # PostgreSQL / Redis / MinIO 连接
-│   │   ├── model/                  # 7 个实体（user/wish/claim/blessing/capsule/badge/audit）
+│   │   ├── model/                  # 8 个实体（user/wish/claim/deadline_extension/blessing/capsule/badge/audit）
 │   │   ├── dto/                    # 每个实体一个 DTO 文件（含 validator 校验）
 │   │   ├── repository/             # 每个实体一个仓储文件（哨兵错误）
 │   │   ├── service/                # 每个实体一个服务文件（事务/状态机）
@@ -176,6 +176,31 @@ curl -sS -X POST http://localhost:19403/api/v1/capsules \
   -d '{"title":"给一年后的自己","content":"要更勇敢","unlock_at":"2027-08-17T00:00:00+08:00"}'
 ```
 
+### 9. 圆梦人申请延期（新截止日 + 原因）
+
+```bash
+curl -sS -X POST http://localhost:19403/api/v1/wishes/1/extension \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"new_deadline":"2027-01-31T23:59:59+08:00","reason":"期末周冲突，需要再缓两周"}'
+```
+
+### 10. 发布者审核延期（同意 / 拒绝）
+
+```bash
+# 同意：心愿截止日更新为申请日期，进度与里程碑保留
+curl -sS -X POST http://localhost:19403/api/v1/wishes/1/extension/review \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"approved":true,"comment":"注意身体，慢慢来"}'
+
+# 拒绝：原截止日不变
+curl -sS -X POST http://localhost:19403/api/v1/wishes/1/extension/review \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"approved":false,"comment":"还是按原计划完成吧"}'
+```
+
 ## API 清单（统一前缀 `/api/v1`，响应统一 `{"code":0,"message":"ok","data":...}`）
 
 ### 认证与用户
@@ -209,7 +234,10 @@ curl -sS -X POST http://localhost:19403/api/v1/capsules \
 | GET | `/wishes/:id/claim` | 心愿的认领记录 | JWT |
 | GET | `/claims/mine` | 我认领的心愿 | JWT |
 | PUT | `/claims/:id/progress` | 更新进度（里程碑打卡） | JWT |
-| POST | `/claims/:id/complete` | 标记完成 | JWT |
+| POST | `/claims/:id/complete` | 标记完成（延期待处理时被拒绝） | JWT |
+| POST | `/wishes/:id/extension` | 圆梦人提交/修改延期申请（新截止日+原因，同一申请只保留一份） | JWT（圆梦人） |
+| POST | `/wishes/:id/extension/review` | 发布者审核延期（同意更新截止日 / 拒绝原日期不变） | JWT（发布者） |
+| GET | `/wishes/:id/extension` | 查看延期申请详情 | JWT（双方） |
 
 ### 祝福留言板
 
@@ -247,6 +275,9 @@ curl -sS -X POST http://localhost:19403/api/v1/capsules \
 - `GET /wishes` 与 `GET /discover` 复用 `WishService.List` / `WishRepository.Count`。
 - `GET /discover/leaderboard` 与 `GET /badges/leaderboard` 复用 `BadgeService.Leaderboard`。
 - `GET /claims/mine` 与个人主页的认领展示复用 `WishClaimService.ListMine`。
+- `GET /wishes/:id` 与 `GET /wishes/:id/extension` 复用 `DeadlineExtensionRepository.FindByWishID`，详情页按身份返回完整申请或脱敏概览。
+
+**延期协商状态机**：圆梦人 `POST /wishes/:id/extension` 提交新截止日与原因 → 心愿进入 `extension_pending`（同一条申请只保留一份，重复提交为更新；期间允许更新进度，但不能标记完成）→ 发布者 `POST /wishes/:id/extension/review`：同意则心愿截止日更新、回到 `claimed/in_progress`（进度与里程碑原样保留）；拒绝则截止日不变、同样回到原圆梦状态；被拒绝后圆梦人可就同一条申请再次提交。详情页按身份展示：圆梦人有申请入口，发布者有待审核入口，其他人只能看到脱敏状态。
 
 ## 横切关注点
 
@@ -256,20 +287,20 @@ curl -sS -X POST http://localhost:19403/api/v1/capsules \
 
 ## 共享枚举出现位置清单
 
-### 枚举 1：心愿状态（pending / claimed / in_progress / completed）
+### 枚举 1：心愿状态（pending / claimed / in_progress / completed / extension_pending）
 
 | 层 | 位置 |
 | --- | --- |
 | 后端 constants | `backend/internal/constants/wish_status.go` |
 | 后端模型 | `backend/internal/model/wish.go`（Status 字段）、`model/wish_claim.go`（Status 字段） |
-| 后端 DTO | `backend/internal/dto/wish_dto.go`（查询参数） |
-| 后端状态机 | `backend/internal/service/wish_claim_service.go`（认领/进度/完成流转） |
-| 后端 handler 校验 | `backend/internal/handler/wish_handler.go`、`handler/wish_claim_handler.go` |
-| 后端日志模板 | `backend/internal/constants/log_templates.go`（`LogWishClaimed`/`LogClaimCompleted` 等） |
-| 后端错误码 | `backend/internal/constants/error_codes.go`（`CodeWishAlreadyClaimed`/`CodeWishStatusInvalid` 等） |
+| 后端 DTO | `backend/internal/dto/wish_dto.go`（查询参数/详情）、`dto/deadline_extension_dto.go`（延期待处理流转） |
+| 后端状态机 | `backend/internal/service/wish_claim_service.go`（认领/进度/完成流转）、`service/deadline_extension_service.go`（进入/退出延期待处理） |
+| 后端 handler 校验 | `backend/internal/handler/wish_handler.go`、`handler/wish_claim_handler.go`、`handler/deadline_extension_handler.go` |
+| 后端日志模板 | `backend/internal/constants/log_templates.go`（`LogWishClaimed`/`LogClaimCompleted`/`LogExtensionApplied` 等） |
+| 后端错误码 | `backend/internal/constants/error_codes.go`（`CodeWishAlreadyClaimed`/`CodeWishStatusInvalid`/`CodeExtensionPending` 等） |
 | 后端 formatters | `backend/internal/util/formatters.go`（`FormatWishStatus`） |
 | 前端 constants | `frontend/src/constants/index.ts`（`WISH_STATUS`/`WISH_STATUS_TEXT`/`WISH_STATUS_STYLE`） |
-| 前端筛选/徽标 | `frontend/src/pages/index.tsx`（状态筛选）、`src/components/StatusBadge.tsx` |
+| 前端筛选/徽标 | `frontend/src/pages/index.tsx`（状态筛选）、`src/components/StatusBadge.tsx`、`src/components/ExtensionPanel.tsx` |
 
 ### 枚举 2：可见范围（public / friend / anonymous）
 
@@ -327,6 +358,21 @@ curl -sS -X POST http://localhost:19403/api/v1/capsules \
 | 后端 formatters | `backend/internal/util/formatters.go`（`FormatBadgeType`） |
 | 前端 constants | `frontend/src/constants/index.ts`（`BADGE_TYPE`/`BADGE_TYPE_TEXT`） |
 | 前端页面 | `frontend/src/pages/profile.tsx`（徽章展示） |
+
+### 枚举 7：延期协商状态（pending / approved / rejected）
+
+| 层 | 位置 |
+| --- | --- |
+| 后端 constants | `backend/internal/constants/extension_status.go` |
+| 后端模型 | `backend/internal/model/deadline_extension.go`（Status 字段） |
+| 后端 DTO | `backend/internal/dto/deadline_extension_dto.go`（`ExtensionResponse`/审核入参） |
+| 后端状态机 | `backend/internal/service/deadline_extension_service.go`（申请/同意/拒绝/再次申请流转） |
+| 后端 handler 校验 | `backend/internal/handler/deadline_extension_handler.go`、`handler/helpers.go`（错误码→HTTP 状态） |
+| 后端日志模板 | `backend/internal/constants/log_templates.go`（`LogExtensionApplied`/`LogExtensionApproved`/`LogExtensionRejected`） |
+| 后端错误码 | `backend/internal/constants/error_codes.go`（`CodeExtensionNotFound`/`CodeExtensionPending`/`CodeExtensionReviewed` 等） |
+| 后端 formatters | `backend/internal/util/formatters.go`（`FormatExtensionStatus`） |
+| 前端 constants | `frontend/src/constants/index.ts`（`EXTENSION_STATUS`/`EXTENSION_STATUS_TEXT`/`EXTENSION_STATUS_STYLE`） |
+| 前端页面 | `frontend/src/components/ExtensionPanel.tsx`（按圆梦人/发布者/其他人展示状态与操作）、`src/pages/wishes/detail.tsx` |
 
 ## 屎山代码设计说明（跨文件协同约束）
 

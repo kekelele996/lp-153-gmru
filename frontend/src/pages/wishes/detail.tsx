@@ -8,6 +8,7 @@ import { claimApi } from "@/api/claim";
 import GiftPicker from "@/components/GiftPicker";
 import ProgressBar from "@/components/ProgressBar";
 import StatusBadge from "@/components/StatusBadge";
+import ExtensionPanel from "@/components/ExtensionPanel";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/hooks/useAuth";
 import { formatCategory, formatDate, formatDeadline, formatDifficulty } from "@/utils/format";
@@ -119,7 +120,8 @@ export default function WishDetailPage() {
   }
 
   const isOwner = isAuthed() && wish.user_id === user?.id;
-  const isFulfiller = Boolean(wish.claim);
+  const isFulfiller = Boolean(isAuthed() && wish.claim && wish.claim.user_id === user?.id);
+  const extensionPending = wish.status === "extension_pending";
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -184,9 +186,18 @@ export default function WishDetailPage() {
             <textarea className="input min-h-[60px]" value={note} onChange={(e) => setNote(e.target.value)} placeholder="记录进度说明/故事..." />
             <div className="flex gap-3">
               <button className="btn-secondary" disabled={actionLoading} onClick={() => updateProgress(progress, false)}>保存进度</button>
-              <button className="btn-primary" disabled={actionLoading} onClick={complete}>标记完成 🎉</button>
+              <button className="btn-primary" disabled={actionLoading || extensionPending} onClick={complete}>
+                {extensionPending ? "延期协商中，暂不能完成" : "标记完成 🎉"}
+              </button>
             </div>
+            {extensionPending && (
+              <p className="text-xs text-orange-600">延期申请待发布者处理，期间可以继续更新进度与里程碑，但不能标记完成。</p>
+            )}
           </div>
+        )}
+
+        {(wish.extension || wish.extension_brief || (isFulfiller && wish.status !== "completed")) && (
+          <ExtensionPanel key={wish.extension?.updated_at ?? "none"} wish={wish} onChanged={() => load(id)} />
         )}
 
         {!wish.claim && !isOwner && wish.status === "pending" && (

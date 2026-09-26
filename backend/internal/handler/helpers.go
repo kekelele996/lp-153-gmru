@@ -53,13 +53,20 @@ func httpStatusOf(code int) int {
 	case code == constants.CodeUserExists || code == constants.CodeWishAlreadyClaimed:
 		return http.StatusConflict
 	case code == constants.CodeUserBanned || code == constants.CodeWishNotOwner ||
-		code == constants.CodeClaimNotOwner || code == constants.CodeAuditDenied:
+		code == constants.CodeClaimNotOwner || code == constants.CodeAuditDenied ||
+		code == constants.CodeExtensionNotReviewer:
 		return http.StatusForbidden
 	case code == constants.CodeInvalidCredential:
 		return http.StatusUnauthorized
 	case code == constants.CodeUserNotFound || code == constants.CodeWishNotFound ||
-		code == constants.CodeClaimNotFound || code == constants.CodeCapsuleNotFound:
+		code == constants.CodeClaimNotFound || code == constants.CodeCapsuleNotFound ||
+		code == constants.CodeExtensionNotFound:
 		return http.StatusNotFound
+	case code == constants.CodeExtensionNotAllowed || code == constants.CodeExtensionPending ||
+		code == constants.CodeExtensionReviewed:
+		return http.StatusConflict
+	case code == constants.CodeExtensionDeadlineInvalid:
+		return http.StatusUnprocessableEntity
 	default:
 		return http.StatusBadRequest
 	}

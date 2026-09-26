@@ -1,4 +1,5 @@
 import { http } from "@/utils/request";
+import type { DeadlineExtension } from "./extension";
 
 export interface Wish {
   id: number;
@@ -34,8 +35,16 @@ export interface ClaimSummary {
   updated_at: string;
 }
 
+export interface ExtensionBrief {
+  status: string;
+  text: string;
+}
+
 export interface WishDetail extends Wish {
   claim?: ClaimSummary | null;
+  // 发布者与圆梦人返回完整申请；其他用户只返回脱敏状态概览。
+  extension?: DeadlineExtension | null;
+  extension_brief?: ExtensionBrief;
   blessing_count: number;
 }
 

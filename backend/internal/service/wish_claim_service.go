@@ -108,9 +108,13 @@ func (s *wishClaimService) UpdateProgress(ctx context.Context, userID, claimID u
 		if claim.UserID != userID {
 			return util.NewAppError(constants.CodeClaimNotOwner, "只有圆梦人才能更新进度", errors.New("claim owner mismatch"))
 		}
-		wish, err := s.wish.FindByID(claim.WishID)
+		// 行级锁读取心愿，与认领/延期申请/延期审核串行化，避免把 extension_pending 等状态旧值覆盖回去。
+		wish, err := s.wish.FindByIDForUpdate(tx, claim.WishID)
 		if err != nil {
 			return util.NewAppError(constants.CodeWishNotFound, constants.MsgWishNotFound, err)
+		}
+		if req.Progress >= 100 && wish.Status == constants.WishStatusExtensionPending {
+			return util.NewAppError(constants.CodeExtensionPending, constants.MsgExtensionPending, errors.New("extension pending, complete forbidden"))
 		}
 		claim.Progress = req.Progress
 		if req.Note != "" {
@@ -127,7 +131,10 @@ func (s *wishClaimService) UpdateProgress(ctx context.Context, userID, claimID u
 			if claim.Status == constants.WishStatusClaimed {
 				claim.Status = constants.WishStatusInProgress
 			}
-			wish.Status = constants.WishStatusInProgress
+			// 延期待处理期间允许继续更新进度，但心愿保持 extension_pending，由发布者审核后恢复。
+			if wish.Status != constants.WishStatusExtensionPending {
+				wish.Status = constants.WishStatusInProgress
+			}
 		}
 		if err := s.claim.UpdateWithTx(tx, claim); err != nil {
 			return util.NewAppError(constants.CodeInternalError, constants.MsgInternalError, err)

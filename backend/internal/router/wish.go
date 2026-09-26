@@ -7,11 +7,11 @@ import (
 )
 
 // RegisterWishRoutes 注册心愿路由。
-func RegisterWishRoutes(rg *gin.RouterGroup, h *handler.WishHandler, auth gin.HandlerFunc) {
+func RegisterWishRoutes(rg *gin.RouterGroup, h *handler.WishHandler, auth, optionalAuth gin.HandlerFunc) {
 	rg.POST("/wishes", auth, h.Create)
 	rg.GET("/wishes", h.List)
 	rg.GET("/wishes/mine", auth, h.Mine)
-	rg.GET("/wishes/:id", h.GetByID)
+	rg.GET("/wishes/:id", optionalAuth, h.GetByID)
 	rg.PUT("/wishes/:id", auth, h.Update)
 	rg.DELETE("/wishes/:id", auth, h.Delete)
 	rg.POST("/wishes/:id/like", auth, h.Like)
