@@ -34,8 +34,22 @@ export interface ClaimSummary {
   updated_at: string;
 }
 
+export interface ExtensionSummary {
+  id: number;
+  claim_id: number;
+  wish_id: number;
+  user_id: number;
+  new_deadline: string;
+  reason: string;
+  status: string;
+  status_text?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface WishDetail extends Wish {
   claim?: ClaimSummary | null;
+  extension?: ExtensionSummary | null;
   blessing_count: number;
 }
 

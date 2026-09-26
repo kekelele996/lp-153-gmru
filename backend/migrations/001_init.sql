@@ -48,6 +48,21 @@ CREATE TABLE IF NOT EXISTS wish_claims (
 );
 CREATE INDEX IF NOT EXISTS idx_claims_user ON wish_claims(user_id);
 
+CREATE TABLE IF NOT EXISTS wish_extensions (
+    id           BIGSERIAL PRIMARY KEY,
+    claim_id     BIGINT NOT NULL UNIQUE REFERENCES wish_claims(id),
+    wish_id      BIGINT NOT NULL REFERENCES wishes(id),
+    user_id      BIGINT NOT NULL REFERENCES users(id),
+    new_deadline TIMESTAMPTZ NOT NULL,
+    reason       TEXT NOT NULL,
+    status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_extensions_wish ON wish_extensions(wish_id);
+CREATE INDEX IF NOT EXISTS idx_extensions_user ON wish_extensions(user_id);
+CREATE INDEX IF NOT EXISTS idx_extensions_status ON wish_extensions(status);
+
 CREATE TABLE IF NOT EXISTS blessings (
     id             BIGSERIAL PRIMARY KEY,
     wish_id        BIGINT NOT NULL REFERENCES wishes(id),

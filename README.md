@@ -58,7 +58,7 @@ lp-153/
 │   ├── internal/
 │   │   ├── config/                 # 环境变量配置
 │   │   ├── database/               # PostgreSQL / Redis / MinIO 连接
-│   │   ├── model/                  # 7 个实体（user/wish/claim/blessing/capsule/badge/audit）
+│   │   ├── model/                  # 8 个实体（user/wish/claim/extension/blessing/capsule/badge/audit）
 │   │   ├── dto/                    # 每个实体一个 DTO 文件（含 validator 校验）
 │   │   ├── repository/             # 每个实体一个仓储文件（哨兵错误）
 │   │   ├── service/                # 每个实体一个服务文件（事务/状态机）
@@ -210,6 +210,9 @@ curl -sS -X POST http://localhost:19403/api/v1/capsules \
 | GET | `/claims/mine` | 我认领的心愿 | JWT |
 | PUT | `/claims/:id/progress` | 更新进度（里程碑打卡） | JWT |
 | POST | `/claims/:id/complete` | 标记完成 | JWT |
+| POST | `/claims/:id/extension` | 圆梦人申请延期（新截止日 + 原因，同一认领仅保留一份，心愿转入延期待处理） | JWT |
+| POST | `/claims/:id/extension/approve` | 发布者同意延期（更新截止日，进度与里程碑保留） | JWT |
+| POST | `/claims/:id/extension/reject` | 发布者拒绝延期（原截止日不变） | JWT |
 
 ### 祝福留言板
 

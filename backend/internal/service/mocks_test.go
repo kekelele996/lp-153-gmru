@@ -149,5 +149,39 @@ func (m *mockTx) Transaction(fn func(tx *gorm.DB) error) error {
 	return m.fn(fn)
 }
 
+// ---- mock WishExtensionRepository ----
+type mockExtRepo struct {
+	createWithTxFn func(tx *gorm.DB, ext *model.WishExtension) error
+	findByClaimFn  func(claimID uint64) (*model.WishExtension, error)
+	findByWishFn   func(wishID uint64) (*model.WishExtension, error)
+	updateWithTxFn func(tx *gorm.DB, ext *model.WishExtension) error
+}
+
+func (m *mockExtRepo) CreateWithTx(tx *gorm.DB, ext *model.WishExtension) error {
+	if m.createWithTxFn == nil {
+		ext.ID = 1
+		return nil
+	}
+	return m.createWithTxFn(tx, ext)
+}
+func (m *mockExtRepo) FindByClaimID(claimID uint64) (*model.WishExtension, error) {
+	if m.findByClaimFn == nil {
+		return nil, repository.ErrNotFound
+	}
+	return m.findByClaimFn(claimID)
+}
+func (m *mockExtRepo) FindByWishID(wishID uint64) (*model.WishExtension, error) {
+	if m.findByWishFn == nil {
+		return nil, repository.ErrNotFound
+	}
+	return m.findByWishFn(wishID)
+}
+func (m *mockExtRepo) UpdateWithTx(tx *gorm.DB, ext *model.WishExtension) error {
+	if m.updateWithTxFn == nil {
+		return nil
+	}
+	return m.updateWithTxFn(tx, ext)
+}
+
 // notFoundErr 快捷构造仓储未找到错误。
 func notFoundErr() error { return repository.ErrNotFound }

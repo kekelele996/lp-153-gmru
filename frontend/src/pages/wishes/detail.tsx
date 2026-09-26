@@ -10,6 +10,7 @@ import ProgressBar from "@/components/ProgressBar";
 import StatusBadge from "@/components/StatusBadge";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/hooks/useAuth";
+import { EXTENSION_STATUS_STYLE, EXTENSION_STATUS_TEXT } from "@/constants";
 import { formatCategory, formatDate, formatDeadline, formatDifficulty } from "@/utils/format";
 
 export default function WishDetailPage() {
@@ -24,6 +25,9 @@ export default function WishDetailPage() {
   const [gift, setGift] = useState("");
   const [progress, setProgress] = useState(0);
   const [note, setNote] = useState("");
+  const [extDeadline, setExtDeadline] = useState("");
+  const [extReason, setExtReason] = useState("");
+  const [showExtForm, setShowExtForm] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   const load = useCallback(async (wishId: number) => {
@@ -93,6 +97,53 @@ export default function WishDetailPage() {
     }
   };
 
+  const submitExtension = async () => {
+    if (!wish?.claim) return;
+    if (!extDeadline) {
+      toast.show("请选择新的截止日", "error");
+      return;
+    }
+    if (extReason.trim().length < 2) {
+      toast.show("请填写延期原因（至少 2 字）", "error");
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await claimApi.requestExtension(wish.claim.id, {
+        new_deadline: `${extDeadline}T23:59:59+08:00`,
+        reason: extReason.trim(),
+      });
+      toast.show("延期申请已提交，等待发布者处理 ⏳");
+      setExtDeadline("");
+      setExtReason("");
+      setShowExtForm(false);
+      load(id);
+    } catch (e) {
+      toast.show((e as Error).message, "error");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const decideExtension = async (approve: boolean) => {
+    if (!wish?.claim) return;
+    setActionLoading(true);
+    try {
+      if (approve) {
+        await claimApi.approveExtension(wish.claim.id);
+        toast.show("已同意延期，截止日已更新 ✅");
+      } else {
+        await claimApi.rejectExtension(wish.claim.id);
+        toast.show("已拒绝延期申请");
+      }
+      load(id);
+    } catch (e) {
+      toast.show((e as Error).message, "error");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const sendBlessing = async () => {
     if (!isAuthed()) {
       toast.show("请先登录再送祝福", "error");
@@ -119,7 +170,8 @@ export default function WishDetailPage() {
   }
 
   const isOwner = isAuthed() && wish.user_id === user?.id;
-  const isFulfiller = Boolean(wish.claim);
+  const isFulfiller = isAuthed() && Boolean(wish.claim) && wish.claim?.user_id === user?.id;
+  const extPending = wish.extension?.status === "pending";
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -173,6 +225,31 @@ export default function WishDetailPage() {
           </div>
         )}
 
+        {wish.extension && (
+          <div className="space-y-2 rounded-xl border border-orange-100 bg-orange-50 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-orange-700">⏳ 延期协商</p>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${EXTENSION_STATUS_STYLE[wish.extension.status] || "bg-gray-100 text-gray-600"}`}>
+                {EXTENSION_STATUS_TEXT[wish.extension.status] || wish.extension.status}
+              </span>
+            </div>
+            <p className="text-sm text-gray-700">
+              申请延期至 <span className="font-medium text-orange-700">{formatDeadline(wish.extension.new_deadline)}</span>
+              <span className="ml-2 text-xs text-gray-400">提交于 {formatDate(wish.extension.created_at)}</span>
+            </p>
+            <p className="text-sm text-gray-600">原因：{wish.extension.reason}</p>
+            {isOwner && extPending && (
+              <div className="flex gap-3 pt-1">
+                <button className="btn-primary !py-1 !px-3" disabled={actionLoading} onClick={() => decideExtension(true)}>同意延期 ✅</button>
+                <button className="btn-secondary !py-1 !px-3" disabled={actionLoading} onClick={() => decideExtension(false)}>拒绝</button>
+              </div>
+            )}
+            {isFulfiller && extPending && (
+              <p className="text-xs text-orange-500">已提交，等待发布者处理；期间暂不能标记完成，可修改后重新提交。</p>
+            )}
+          </div>
+        )}
+
         {isFulfiller && wish.status !== "completed" && (
           <div className="space-y-3 rounded-xl border border-purple-100 bg-white p-4">
             <p className="text-sm font-medium text-gray-700">更新圆梦进度</p>
@@ -182,10 +259,23 @@ export default function WishDetailPage() {
               <button className="btn-secondary !py-1 !px-3" disabled={actionLoading} onClick={() => updateProgress(progress, true)}>里程碑打卡 🎯</button>
             </div>
             <textarea className="input min-h-[60px]" value={note} onChange={(e) => setNote(e.target.value)} placeholder="记录进度说明/故事..." />
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <button className="btn-secondary" disabled={actionLoading} onClick={() => updateProgress(progress, false)}>保存进度</button>
-              <button className="btn-primary" disabled={actionLoading} onClick={complete}>标记完成 🎉</button>
+              {wish.status !== "extension_pending" && (
+                <button className="btn-primary" disabled={actionLoading} onClick={complete}>标记完成 🎉</button>
+              )}
+              <button className="btn-secondary" disabled={actionLoading} onClick={() => setShowExtForm((v) => !v)}>
+                {showExtForm ? "收起延期申请" : "申请延期 ⏳"}
+              </button>
             </div>
+            {showExtForm && (
+              <div className="space-y-2 rounded-xl bg-orange-50/60 p-3">
+                <p className="text-xs text-gray-500">快到期了还差一点？提交新的截止日和原因，等发布者确认。</p>
+                <input className="input" type="date" value={extDeadline} onChange={(e) => setExtDeadline(e.target.value)} />
+                <textarea className="input min-h-[60px]" value={extReason} onChange={(e) => setExtReason(e.target.value)} placeholder="延期原因，例如：材料还在路上，需要多一周..." />
+                <button className="btn-primary" disabled={actionLoading} onClick={submitExtension}>提交延期申请</button>
+              </div>
+            )}
           </div>
         )}
 

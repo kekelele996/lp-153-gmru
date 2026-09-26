@@ -1,5 +1,5 @@
 import { http } from "@/utils/request";
-import type { ClaimSummary, PageResult } from "./wish";
+import type { ClaimSummary, ExtensionSummary, PageResult } from "./wish";
 
 export const claimApi = {
   claim: (wishId: number) => http.post<ClaimSummary>(`/wishes/${wishId}/claim`),
@@ -10,4 +10,10 @@ export const claimApi = {
     http.put<ClaimSummary>(`/claims/${claimId}/progress`, payload),
   complete: (claimId: number, payload: { note?: string }) =>
     http.post<ClaimSummary>(`/claims/${claimId}/complete`, payload),
+  requestExtension: (claimId: number, payload: { new_deadline: string; reason: string }) =>
+    http.post<ExtensionSummary>(`/claims/${claimId}/extension`, payload),
+  approveExtension: (claimId: number) =>
+    http.post<ExtensionSummary>(`/claims/${claimId}/extension/approve`),
+  rejectExtension: (claimId: number) =>
+    http.post<ExtensionSummary>(`/claims/${claimId}/extension/reject`),
 };

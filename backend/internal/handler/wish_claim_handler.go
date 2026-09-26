@@ -77,6 +77,58 @@ func (h *WishClaimHandler) Complete(c *gin.Context) {
 	c.JSON(200, gin.H{"code": 0, "message": constants.MsgWishCompleted, "data": dto.ToWishClaimResponse(claim, "", "")})
 }
 
+// RequestExtension POST /api/v1/claims/:id/extension
+func (h *WishClaimHandler) RequestExtension(c *gin.Context) {
+	claimID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		responseError(c, 400, constants.CodeBadRequest, "认领 id 参数非法")
+		return
+	}
+	var req dto.RequestExtensionRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	userID := middleware.CurrentUserID(c)
+	ext, err := h.claim.RequestExtension(c.Request.Context(), userID, claimID, req, c.ClientIP(), middleware.GetRequestID(c))
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(200, gin.H{"code": 0, "message": constants.MsgExtensionSubmitted, "data": dto.ToWishExtensionResponse(ext, constants.ExtensionStatusText(ext.Status))})
+}
+
+// ApproveExtension POST /api/v1/claims/:id/extension/approve
+func (h *WishClaimHandler) ApproveExtension(c *gin.Context) {
+	claimID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		responseError(c, 400, constants.CodeBadRequest, "认领 id 参数非法")
+		return
+	}
+	userID := middleware.CurrentUserID(c)
+	ext, err := h.claim.ApproveExtension(c.Request.Context(), userID, claimID, c.ClientIP(), middleware.GetRequestID(c))
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(200, gin.H{"code": 0, "message": constants.MsgExtensionApproved, "data": dto.ToWishExtensionResponse(ext, constants.ExtensionStatusText(ext.Status))})
+}
+
+// RejectExtension POST /api/v1/claims/:id/extension/reject
+func (h *WishClaimHandler) RejectExtension(c *gin.Context) {
+	claimID, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		responseError(c, 400, constants.CodeBadRequest, "认领 id 参数非法")
+		return
+	}
+	userID := middleware.CurrentUserID(c)
+	ext, err := h.claim.RejectExtension(c.Request.Context(), userID, claimID, c.ClientIP(), middleware.GetRequestID(c))
+	if err != nil {
+		handleError(c, err)
+		return
+	}
+	c.JSON(200, gin.H{"code": 0, "message": constants.MsgExtensionRejected, "data": dto.ToWishExtensionResponse(ext, constants.ExtensionStatusText(ext.Status))})
+}
+
 // Mine GET /api/v1/claims/mine
 func (h *WishClaimHandler) Mine(c *gin.Context) {
 	var q dto.PageQuery

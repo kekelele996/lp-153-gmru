@@ -58,7 +58,8 @@ func httpStatusOf(code int) int {
 	case code == constants.CodeInvalidCredential:
 		return http.StatusUnauthorized
 	case code == constants.CodeUserNotFound || code == constants.CodeWishNotFound ||
-		code == constants.CodeClaimNotFound || code == constants.CodeCapsuleNotFound:
+		code == constants.CodeClaimNotFound || code == constants.CodeCapsuleNotFound ||
+		code == constants.CodeExtensionNotFound:
 		return http.StatusNotFound
 	default:
 		return http.StatusBadRequest

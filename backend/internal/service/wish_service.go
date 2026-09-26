@@ -27,6 +27,7 @@ type WishService interface {
 type wishService struct {
 	wish    repository.WishRepository
 	claim   repository.WishClaimRepository
+	ext     repository.WishExtensionRepository
 	bless   repository.BlessingRepository
 	user    repository.UserRepository
 	badge   BadgeService
@@ -38,13 +39,14 @@ type wishService struct {
 func NewWishService(
 	wish repository.WishRepository,
 	claim repository.WishClaimRepository,
+	ext repository.WishExtensionRepository,
 	bless repository.BlessingRepository,
 	user repository.UserRepository,
 	badge BadgeService,
 	audit AuditService,
 	logger *slog.Logger,
 ) WishService {
-	return &wishService{wish: wish, claim: claim, bless: bless, user: user, badge: badge, audit: audit, logger: logger}
+	return &wishService{wish: wish, claim: claim, ext: ext, bless: bless, user: user, badge: badge, audit: audit, logger: logger}
 }
 
 func (s *wishService) Create(userID uint64, req dto.CreateWishRequest, ip, requestID string) (*model.Wish, error) {
@@ -161,6 +163,10 @@ func (s *wishService) GetByID(wishID uint64) (*dto.WishDetailResponse, error) {
 			claimResp.FulfillerName = fulfiller.Nickname
 		}
 		detail.Claim = &claimResp
+	}
+	if ext, eerr := s.ext.FindByWishID(wishID); eerr == nil {
+		extResp := dto.ToWishExtensionResponse(ext, constants.ExtensionStatusText(ext.Status))
+		detail.Extension = &extResp
 	}
 	if count, berr := s.bless.CountByWishID(wishID); berr == nil {
 		detail.BlessingCount = count

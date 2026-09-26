@@ -14,18 +14,37 @@ export const WISH_STATUS = {
   CLAIMED: "claimed",
   IN_PROGRESS: "in_progress",
   COMPLETED: "completed",
+  EXTENSION_PENDING: "extension_pending",
 } as const;
 export const WISH_STATUS_TEXT: Record<string, string> = {
   pending: "待认领",
   claimed: "已被认领",
   in_progress: "圆梦中",
   completed: "已完成",
+  extension_pending: "延期协商中",
 };
 export const WISH_STATUS_STYLE: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
   claimed: "bg-sky-100 text-sky-700",
   in_progress: "bg-violet-100 text-violet-700",
   completed: "bg-emerald-100 text-emerald-700",
+  extension_pending: "bg-orange-100 text-orange-700",
+};
+
+export const EXTENSION_STATUS = {
+  PENDING: "pending",
+  APPROVED: "approved",
+  REJECTED: "rejected",
+} as const;
+export const EXTENSION_STATUS_TEXT: Record<string, string> = {
+  pending: "待发布者处理",
+  approved: "已同意",
+  rejected: "已拒绝",
+};
+export const EXTENSION_STATUS_STYLE: Record<string, string> = {
+  pending: "bg-orange-100 text-orange-700",
+  approved: "bg-emerald-100 text-emerald-700",
+  rejected: "bg-rose-100 text-rose-700",
 };
 
 export const VISIBILITY = {
